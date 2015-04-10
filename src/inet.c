@@ -759,6 +759,7 @@ int pr_inet_set_proto_opts(pool *p, conn_t *c, int mss, int nodelay,
   }
 #endif /* IP_TOS */
 
+#ifdef PR_USE_IPV6
 #ifdef IPV6_TCLASS
   if (pr_netaddr_use_ipv6()) {
     /* Only set TCLASS flags on IPv6 sockets; IPv4 sockets use TOS. */
@@ -781,6 +782,7 @@ int pr_inet_set_proto_opts(pool *p, conn_t *c, int mss, int nodelay,
     }
   }
 #endif /* IPV6_TCLASS */
+#endif
 
   if (c->listen_fd != -1) {
     if (pr_inet_set_proto_cork(c->listen_fd, nopush) < 0) {
