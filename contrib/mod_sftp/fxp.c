@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_sftp sftp
- * Copyright (c) 2008-2015 TJ Saunders
+ * Copyright (c) 2008-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -9056,7 +9056,7 @@ static void fxp_trace_v6_realpath_flags(pool *p, unsigned char flags) {
 }
 
 static int fxp_handle_realpath(struct fxp_packet *fxp) {
-  unsigned char *buf, *ptr, realpath_flags = 0;
+  unsigned char *buf, *ptr, realpath_flags = SSH2_FXRP_NO_CHECK;
   char *path;
   uint32_t buflen, bufsz;
   struct stat st;
@@ -9096,7 +9096,6 @@ static int fxp_handle_realpath(struct fxp_packet *fxp) {
      *
      * for the semantics and defaults of these crazy flags.
      */
-    realpath_flags = SSH2_FXRP_NO_CHECK;
 
     if (fxp->payload_sz >= sizeof(char)) {
       char *composite_path;
@@ -11921,6 +11920,11 @@ int sftp_fxp_close_session(uint32_t channel_id) {
           (void) pr_log_writefile(sftp_logfd, MOD_SFTP_VERSION,
             "aborting %d unclosed file %s", count,
             count != 1 ? "handles" : "handle");
+
+          /* Make sure that any abort processing has a valid response pool to
+           * work with.
+           */
+          pr_response_set_pool(sess->pool);
 
           res = pr_table_do(sess->handle_tab, fxp_handle_abort, callback_data,
             PR_TABLE_DO_FL_ALL);
