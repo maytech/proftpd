@@ -1,6 +1,6 @@
 /*
  * ProFTPD - FTP server daemon
- * Copyright (c) 2001-2011 The ProFTPD Project team
+ * Copyright (c) 2001-2016 The ProFTPD Project team
  *  
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -79,19 +79,24 @@ static void reset_last_response(void) {
 void pr_response_set_pool(pool *p) {
   resp_pool = p;
 
+  if (p == NULL) {
+    reset_last_response();
+    return;
+  }
+
   /* Copy any old "last" values out of the new pool. */
   if (resp_last_response_code != NULL) {
-    char *tmp;
+    char *ptr;
 
-    tmp = resp_last_response_code;
-    resp_last_response_code = pstrdup(p, tmp);
+    ptr = resp_last_response_code;
+    resp_last_response_code = pstrdup(p, ptr);
   }
 
   if (resp_last_response_msg != NULL) {
-    char *tmp;
+    char *ptr;
   
-    tmp = resp_last_response_msg;
-    resp_last_response_msg = pstrdup(p, tmp);
+    ptr = resp_last_response_msg;
+    resp_last_response_msg = pstrdup(p, ptr);
   }
 }
 
@@ -136,13 +141,20 @@ int pr_response_block(int bool) {
 
 void pr_response_clear(pr_response_t **head) {
   reset_last_response();
-  *head = NULL;
+
+  if (head != NULL) {
+    *head = NULL;
+  }
 }
 
 void pr_response_flush(pr_response_t **head) {
   unsigned char ml = FALSE;
   char *last_numeric = NULL;
   pr_response_t *resp = NULL;
+
+  if (head == NULL) {
+    return;
+  }
 
   if (resp_blocked) {
     return;

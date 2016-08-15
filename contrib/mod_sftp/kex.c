@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_sftp key exchange (kex)
- * Copyright (c) 2008-2015 TJ Saunders
+ * Copyright (c) 2008-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #include "interop.h"
 #include "tap.h"
 
+extern pr_response_t *resp_list, *resp_err_list;
 extern module sftp_module;
 
 /* For managing the kexinit process */
@@ -2162,6 +2163,7 @@ static int read_dh_init(struct ssh2_packet *pkt, struct sftp_kex *kex) {
 
 static int set_session_keys(struct sftp_kex *kex) {
   const char *k, *v;
+  int comp_read_flags, comp_write_flags;
 
   if (sftp_cipher_set_read_key(kex_pool, kex->hash, kex->k, kex->h,
       kex->hlen) < 0)
@@ -2179,10 +2181,29 @@ static int set_session_keys(struct sftp_kex *kex) {
       kex->hlen) < 0)
     return -1;
 
-  if (sftp_compress_init_read(SFTP_COMPRESS_FL_NEW_KEY) < 0)
+  comp_read_flags = comp_write_flags = SFTP_COMPRESS_FL_NEW_KEY;
+
+  /* If we are rekeying, AND the existing compression is "delayed", then
+   * we need to use slightly different compression flags.
+   */
+  if (kex_rekey_kex) {
+    const char *algo;
+
+    algo = sftp_compress_get_read_algo();
+    if (strncmp(algo, "zlib@openssh.com", 17) == 0) {
+      comp_read_flags = SFTP_COMPRESS_FL_AUTHENTICATED;
+    }
+
+    algo = sftp_compress_get_write_algo();
+    if (strncmp(algo, "zlib@openssh.com", 17) == 0) {
+      comp_write_flags = SFTP_COMPRESS_FL_AUTHENTICATED;
+    }
+  }
+
+  if (sftp_compress_init_read(comp_read_flags) < 0)
     return -1;
 
-  if (sftp_compress_init_write(SFTP_COMPRESS_FL_NEW_KEY) < 0)
+  if (sftp_compress_init_write(comp_write_flags) < 0)
     return -1;
 
   k = pstrdup(session.pool, "SFTP_CLIENT_CIPHER_ALGO");
@@ -3435,6 +3456,10 @@ static struct ssh2_packet *read_kex_packet(pool *p, struct sftp_kex *kex,
       return NULL;
     }
 
+    pr_response_clear(&resp_list);
+    pr_response_clear(&resp_err_list);
+    pr_response_set_pool(pkt->pool);
+
     /* Per RFC 4253, Section 11, DEBUG, DISCONNECT, IGNORE, and UNIMPLEMENTED
      * messages can occur at any time, even during KEX.  We have to be prepared
      * for this, and Do The Right Thing(tm).
@@ -3468,21 +3493,25 @@ static struct ssh2_packet *read_kex_packet(pool *p, struct sftp_kex *kex,
     switch (mesg_type) {
       case SFTP_SSH2_MSG_DEBUG:
         sftp_ssh2_packet_handle_debug(pkt);
+        pr_response_set_pool(NULL);
         pkt = NULL;
         break;
 
       case SFTP_SSH2_MSG_DISCONNECT:
         sftp_ssh2_packet_handle_disconnect(pkt);
+        pr_response_set_pool(NULL);
         pkt = NULL;
         break;
 
       case SFTP_SSH2_MSG_IGNORE:
         sftp_ssh2_packet_handle_ignore(pkt);
+        pr_response_set_pool(NULL);
         pkt = NULL;
         break;
 
       case SFTP_SSH2_MSG_UNIMPLEMENTED:
-        sftp_ssh2_packet_handle_ignore(pkt);
+        sftp_ssh2_packet_handle_unimplemented(pkt);
+        pr_response_set_pool(NULL);
         pkt = NULL;
         break;
 
@@ -3491,6 +3520,7 @@ static struct ssh2_packet *read_kex_packet(pool *p, struct sftp_kex *kex,
         (void) pr_log_writefile(sftp_logfd, MOD_SFTP_VERSION,
           "received %s (%d) unexpectedly, disconnecting",
           sftp_ssh2_packet_get_mesg_type_desc(mesg_type), mesg_type);
+        pr_response_set_pool(NULL);
         destroy_kex(kex);
         destroy_pool(pkt->pool);
         SFTP_DISCONNECT_CONN(disconn_code, NULL);
