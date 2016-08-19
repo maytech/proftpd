@@ -2576,6 +2576,9 @@ static int get_dh_gex_group(struct sftp_kex *kex, uint32_t min,
 
           } else if (nbits == smaller_dh_nbits) {
             *((DH **) push_array(smaller_dhs)) = dh;
+
+          } else {
+            DH_free(dh);
           }
 
         } else {
@@ -2596,6 +2599,9 @@ static int get_dh_gex_group(struct sftp_kex *kex, uint32_t min,
 
           } else if (nbits == larger_dh_nbits) {
             *((DH **) push_array(larger_dhs)) = dh;
+
+          } else {
+            DH_free(dh);
           }
         }
       }
@@ -3781,25 +3787,27 @@ int sftp_kex_handle(struct ssh2_packet *pkt) {
 
   /* If we didn't send our NEWKEYS message earlier, do it now. */
   if (!sent_newkeys) {
+    struct ssh2_packet *pkt2;
+
     pr_trace_msg(trace_channel, 9, "sending NEWKEYS message to client");
 
     /* Send our NEWKEYS reply. */
-    pkt = sftp_ssh2_packet_create(kex_pool);
-    res = write_newkeys_reply(pkt);
+    pkt2 = sftp_ssh2_packet_create(kex_pool);
+    res = write_newkeys_reply(pkt2);
     if (res < 0) {
       destroy_kex(kex);
-      destroy_pool(pkt->pool);
+      destroy_pool(pkt2->pool);
       return -1;
     }
 
-    res = sftp_ssh2_packet_write(sftp_conn->wfd, pkt);
+    res = sftp_ssh2_packet_write(sftp_conn->wfd, pkt2);
     if (res < 0) {
       destroy_kex(kex);
-      destroy_pool(pkt->pool);
+      destroy_pool(pkt2->pool);
       return -1;
     }
 
-    destroy_pool(pkt->pool);
+    destroy_pool(pkt2->pool);
   }
 
   /* Last but certainly not least, set up the keys for encryption and
